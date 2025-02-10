@@ -5,7 +5,7 @@
 
 int main(int argc, char *argv[])
 {
-	bool newline = false;
+	bool newline = true;
 	int start = 1;
 //why do we need argc if we have argv?
 	if (argc >1 && argv[1][0] == '-' && argv[1][1] == 'n'){
