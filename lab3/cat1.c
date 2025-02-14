@@ -6,7 +6,7 @@
 
 
 void read_from_stream(FILE *stream, bool linecount, int *linenumber) {
-    //will need to take in lineCount parameter
+    //will need to take in lineCount parameter as a pointer
     
     char buf[128];
      //add linecount to each line
