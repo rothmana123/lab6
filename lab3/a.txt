@@ -1,0 +1,2 @@
+Overwriting 'a.txt' so we don't have
+so much text to display below :-)
