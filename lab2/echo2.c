@@ -3,6 +3,10 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+//VS Code didnt like opting and optarg, so adding these here
+extern char *optarg;
+extern int optind;
+
 //int rotate(char *ch, int places) {
 int rotate(char c, int rotatePlaces)
 {
@@ -26,7 +30,7 @@ int rotate(char c, int rotatePlaces)
 int main(int argc, char *argv[]) {
     int c;
     int rotatePlaces = 0;  // Initialize to 0 to avoid rotating if -r is not used
-    int start = 1;  // Skip over the program name
+    //int start = 1;  // replacing with optind
     bool newLine = true;
 
     // Process flags
@@ -36,15 +40,19 @@ int main(int argc, char *argv[]) {
                 //-n flag for skipping \n 
                 printf("-n flag found\n");
                 newLine = false;
-                start++;  // Skip the -n argument
+                //start++;  // Skip the -n argument
                 break;
             case 'r':
                 // -r flag for rotating characters
-                if (optarg != NULL) {
-                    rotatePlaces = atoi(optarg);  // Convert the rotation value from string to integer
-                    printf("-r flag found, rotating by %d places\n", rotatePlaces);
-                }
-                start+=2;  // Skip the -r argument
+                rotatePlaces = atoi(optarg);  // Convert optarg to integer
+                break;
+                /*previous approach
+                 if (optarg != NULL) {
+                     rotatePlaces = atoi(optarg);  // Convert the rotation value from string to integer
+                     printf("-r flag found, rotating by %d places\n", rotatePlaces);
+                 }
+                //start+=2;  // Skip the -r argument
+                */
                 break;
             case 'h':
                 printf("Usage: %s [-n] [-r <places>] [arguments...]\n", argv[0]);
@@ -57,7 +65,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Rotate all characters in all remaining arguments after -r is processed
-    for (int i = start; i < argc; ++i) {
+    for (int i = optind; i < argc; ++i) {
         for (int j = 0; argv[i][j] != '\0'; ++j) {
             //printf("arg: %c\n", argv[i][j]);
             rotate(argv[i][j], rotatePlaces);
