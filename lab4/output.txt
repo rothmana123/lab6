@@ -1,0 +1,8 @@
+Running Test Case 1: Invalid key
+
+Running Test Case 2: Wrong delimiter
+le:    1248608 kB
+
+Running Test Case 3: Correct key & delimiter
+1248608 kB
+

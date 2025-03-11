@@ -1,0 +1,4 @@
+(empty)                     # Output for test case 1
+value in funky format       # Output for test case 2 (will have additional info; not delimited properly)
+1578044 kB                  # Output for test case 3 (this value will vary)
+
