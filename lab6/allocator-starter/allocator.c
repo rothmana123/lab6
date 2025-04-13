@@ -31,6 +31,9 @@ struct mem_block
     struct mem_block *prev;
     struct mem_block *next;
     char name[BLOCK_NAME_LEN]; // name for debugging
+    // #ifdef DEBUG
+    // char name[BLOCK_NAME_LEN];
+    // #endif
 };
 
 //be clear on what this does
@@ -81,8 +84,8 @@ void remove_tail_block()
 
     free_list_size--;
 
-    TRACE("remove_tail_block(): Unmapping oldest block [%p]: %zu bytes", 
-          oldest, oldest->size);
+    // TRACE("remove_tail_block(): Unmapping oldest block [%p]: %zu bytes", 
+    //       oldest, oldest->size);
 
     // Now unmap the block
     if (munmap(oldest, oldest->size) == -1) {
@@ -95,6 +98,7 @@ void remove_tail_block()
  */
 void add_to_free_list(struct mem_block *block)
 {
+    //size_t block_size = block->size + sizeof(struct mem_block);
     block->prev = NULL;
     block->next = free_list_head;
 
@@ -113,14 +117,15 @@ void add_to_free_list(struct mem_block *block)
     }
 
     free_list_size++;
-    TRACE("Block added to free list head [%p], new size: %zu", block, free_list_size);
+    TRACE("free(): Cached free block -- [%p]: %zu bytes", block, block->size);
+    //LOG("malloc request. size: %zu, block size: %zu\n", size, block_size);
+    //TRACE("Allocated block [%p]: %zu bytes", block, block_size);
 
     // Check if we need to remove a block because we've reached the threshold
     if (free_list_size > alloc_threshold) {
         remove_tail_block();
     }
 }
-
 
 
 /**
@@ -160,8 +165,8 @@ struct mem_block *find_suitable_block(size_t size)
             current->prev = current->next = NULL;
             free_list_size--;
 
-            TRACE("Reusing block from free list [%p], usable: %zu, requested: %zu",
-                  current, usable_size, size);
+            // TRACE("Reusing block from free list [%p], usable: %zu, requested: %zu",
+            //       current, usable_size, size);
             return current;
         }
 
@@ -308,8 +313,11 @@ void *realloc(void *ptr, size_t size)
     // Copy old contents to the new block (only up to the old size)
     memcpy(new_ptr, ptr, old_size);
 
-    TRACE("Block resized: old [%p], new [%p], copied: %zu bytes", 
-          old_block, ((struct mem_block *)new_ptr - 1), old_size);
+    // TRACE("Block resized: old [%p], new [%p], copied: %zu bytes", 
+    //       old_block, ((struct mem_block *)new_ptr - 1), old_size);
+    struct mem_block *new_block = (struct mem_block *)new_ptr - 1;
+    TRACE("Resized block -- [%p]: %zu bytes -> %zu bytes",
+        old_block, old_block->size, new_block->size);
 
     // Free the old block
     free(ptr);
