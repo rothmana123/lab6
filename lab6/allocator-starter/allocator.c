@@ -22,6 +22,7 @@ static struct mem_block *free_list_head = NULL;
 static struct mem_block *free_list_tail = NULL;
 static size_t free_list_size = 0;
 static size_t alloc_threshold = 100;
+static int initialized = 0;
 
 // include pointers for double linked list
 struct mem_block
@@ -39,11 +40,11 @@ struct mem_block *find_suitable_block(size_t size);
 //       ALLOC_THRESH environment variable (note that getenv returns a
 //       string, not a number). You can store the size so you don't need to
 //       look it up every time.
-// Moving this here so it can be accessed elsewhere...but should it be insid free() ???
-static int initialized = 0;
-
 
 //*be clear on what this does and it its needed...
+/**
+ * Initialize the allocator's threshold from environment variable if not already done
+ */
 void initialize_threshold_if_needed()
 {
     if (!initialized)
@@ -57,7 +58,41 @@ void initialize_threshold_if_needed()
     }
 }
 
-// Helper Function to Add to Free List Head
+/**
+ * Remove and unmap the oldest block (tail) from the free list
+ */
+void remove_tail_block()
+{
+    if (free_list_tail == NULL)
+        return;
+
+    struct mem_block *oldest = free_list_tail;
+
+    // Update the tail pointer
+    free_list_tail = oldest->prev;
+
+    // If we just removed the last element, update head too
+    if (free_list_tail == NULL) {
+        free_list_head = NULL;
+    } else {
+        // Otherwise update the new tail's next pointer
+        free_list_tail->next = NULL;
+    }
+
+    free_list_size--;
+
+    TRACE("remove_tail_block(): Unmapping oldest block [%p]: %zu bytes", 
+          oldest, oldest->size);
+
+    // Now unmap the block
+    if (munmap(oldest, oldest->size) == -1) {
+        perror("munmap");
+    }
+
+}
+/**
+ * Add a block to the head of the free list
+ */
 void add_to_free_list(struct mem_block *block)
 {
     block->prev = NULL;
@@ -67,6 +102,8 @@ void add_to_free_list(struct mem_block *block)
     {
         free_list_head->prev = block;
     }
+
+    //update the head to point to this new block
     free_list_head = block;
 
     // If list was empty, set tail too
@@ -77,44 +114,19 @@ void add_to_free_list(struct mem_block *block)
 
     free_list_size++;
     TRACE("Block added to free list head [%p], new size: %zu", block, free_list_size);
-}
 
-//this also could be in free, moving outside...
-// TODO: if the list has run out of space, unmap the oldest block in the
-//       list to make space for the block that was just freed. Take note
-//       that the code below is unmapping the block that was just freed, so
-//       you will need to change it.
-void remove_tail_block()
-{
-    if (free_list_tail == NULL)
-        return;
-
-    struct mem_block *oldest = free_list_tail;
-
-    if (oldest->prev != NULL)
-    {
-        oldest->prev->next = NULL;
-        free_list_tail = oldest->prev;
-    }
-    else
-    {
-        // List had only one item
-        free_list_head = NULL;
-        free_list_tail = NULL;
-    }
-
-    free_list_size--;
-
-    if (munmap(oldest, oldest->size) == -1)
-    {
-        perror("munmap");
-    }
-    else
-    {
-        TRACE("Unmapped oldest block from tail [%p]: %zu bytes", oldest, oldest->size);
+    // Check if we need to remove a block because we've reached the threshold
+    if (free_list_size > alloc_threshold) {
+        remove_tail_block();
     }
 }
 
+
+
+/**
+ * Find a suitable block in the free list that can accommodate the requested size
+ * The search starts from the tail to maintain FIFO behavior
+ */
 struct mem_block *find_suitable_block(size_t size)
 {
     struct mem_block *current = free_list_tail;
@@ -160,17 +172,30 @@ struct mem_block *find_suitable_block(size_t size)
     return NULL;
 }
 
-//unclear on what this method does - ah, its for debugging
+/**
+ * Helper function to allocate memory with a name (for debugging)
+ */
 void *malloc_name(size_t size, const char *name) {
+    // First allocate the memory using our regular malloc
     void *ptr = malloc(size);
     if (ptr == NULL)
         return NULL;
 
+    // Get access to the memory block header
     struct mem_block *block = (struct mem_block *)ptr - 1;
-     if (name) {
+    
+    // Copy the name into the block's name field if provided
+    if (name) {
+        // Make sure not to write beyond the name buffer
         strncpy(block->name, name, BLOCK_NAME_LEN - 1);
-        block->name[BLOCK_NAME_LEN - 1] = '\0'; // Make sure it's null-terminated
-    }
+        block->name[BLOCK_NAME_LEN - 1] = '\0'; // Ensure null termination
+    } 
+    
+    // else {
+    //     // Initialize to empty string if no name provided
+    //     block->name[0] = '\0';
+    // }
+    
     return ptr;
 }
 
@@ -180,19 +205,17 @@ void *malloc_name(size_t size, const char *name) {
  */
 void *malloc(size_t size)
 {
+    initialize_threshold_if_needed();  // doing this in `free`, but it’s needed here too.
+
     size_t block_size = size + sizeof(struct mem_block);
     LOG("malloc request. size: %zu, block size: %zu\n", size, block_size);
-
-    // TODO: scan through your doubly-linked free list, starting at the tail,
-    //       and return a viable block if you find one. If no viable blocks are
-    //       in the list, you can mmap a new block.
-    initialize_threshold_if_needed();  // You were doing this in `free`, but it’s needed here too.
 
     struct mem_block *block = find_suitable_block(size);
     if (block != NULL) {
         return block + 1;  // skip over metadata
     }
 
+    //if no suitbale block found
      block = mmap(
         NULL,
         block_size,
@@ -207,6 +230,10 @@ void *malloc(size_t size)
     }
 
     block->size = block_size;
+    block->prev = NULL;
+    block->next = NULL;
+    block->name[0] = '\0';
+
     TRACE("Allocated block [%p]: %zu bytes", block, block_size);
     return block + 1;
 }
@@ -214,51 +241,28 @@ void *malloc(size_t size)
 /**
  * The free() function frees the memory space pointed to by ptr, which must
  * have been returned by a previous call to malloc() or related functions.
- * Otherwise, or if ptr has already been freed, undefined behavior occurs.
- * If ptr is NULL, no operation is performed.
  */
 void free(void *ptr)
 {
-    initialize_threshold_if_needed(); //
-
-    
-
     if (ptr == NULL) {
         /* Freeing a NULL pointer does nothing. */
         return;
     }
 
+    initialize_threshold_if_needed(); //
+
     struct mem_block *block = (struct mem_block *) ptr - 1;
     LOG("free request. ptr: %p, size: %zu\n", block, block->size);
-    // size_t block_size = block->size;
-    // LOG("free request. ptr: %p, size: %zu\n", block, block_size);
+   
 
-
-    // TODO: find out what the size of the free list should be by checking the
-    //       ALLOC_THRESH environment variable (note that getenv returns a
-    //       string, not a number). You can store the size so you don't need to
-    //       look it up every time.
-    //*this was moved out of this function, below find suitable block
-
-    // TODO: if there is space in our free list, add the block to the head of
-    //       the list instead of unmapping it.
-    //wait, why would the free list run out of space???
+     // If the free list is at capacity, remove the oldest block before adding a new one
     if (free_list_size >= alloc_threshold)
     {
         remove_tail_block(); // FIFO: free up a slot
     }
 
-    add_to_free_list(block); // insert the newly freed block...insert to where tho?
-
-    //*tHis one also moved out, now under add to free
-    // TODO: if the list has run out of space, unmap the oldest block in the
-    //       list to make space for the block that was just freed. Take note
-    //       that the code below is unmapping the block that was just freed, so
-    //       you will need to change it.
-
-     // always try to add the new block to the list
-    // if the list is full, remove and unmpa the oldest block first to stay under threshold
-    // do not munmap() the block we are adding
+    // Add the newly freed block to the head of the list
+    add_to_free_list(block); 
 }
 
 /**
@@ -276,10 +280,7 @@ void *calloc(size_t nmemb, size_t size)
 
 /**
  * The realloc() function changes the size of the memory block pointed to by
- * ptr to size bytes.  The contents of the memory will be unchanged in the
- * range from the start of the region up to the minimum of the old and new
- * sizes.  If the new size is larger than the old size, the added memory will
- * not be initialized.
+ * ptr to size bytes.
  */
 void *realloc(void *ptr, size_t size)
 {
@@ -291,16 +292,14 @@ void *realloc(void *ptr, size_t size)
 
     struct mem_block *old_block = (struct mem_block *)ptr - 1;
     size_t old_size = old_block->size - sizeof(struct mem_block);
-    // TODO: check if the block can already accommodate the requested size.
-    //       if it can, there's no need to do anything
+
+    // Check if the block can already accommodate the requested size
     if (old_size >= size)
     {
         return ptr;
     }
 
-    // TODO: if the block can't accommodate the requested size, then
-    //       we should allocate a new block, copy the old data there,
-    //       and then free the old block.
+    // Allocate a new, larger block
     void *new_ptr = malloc(size);
     if (new_ptr == NULL)
     {
@@ -308,6 +307,9 @@ void *realloc(void *ptr, size_t size)
     }
     // Copy old contents to the new block (only up to the old size)
     memcpy(new_ptr, ptr, old_size);
+
+    TRACE("Block resized: old [%p], new [%p], copied: %zu bytes", 
+          old_block, ((struct mem_block *)new_ptr - 1), old_size);
 
     // Free the old block
     free(ptr);
@@ -317,14 +319,9 @@ void *realloc(void *ptr, size_t size)
     //return ptr;
 }
 
-// If ptr == NULL, treat like malloc()
-// If current block is big enough, return it unchanged.
-// If it’s not big enough:
-// Allocate a new block
-// Copy over the existing data
-// Free the old block
-// Return new block
-
+/**
+ * Debug function to print the current state of the free list
+ */
 void print_memory()
 {
     printf("=== Free List State ===\n");
@@ -375,8 +372,3 @@ int main()
 
     return 0;
 }
- // if (munmap(block, block->size) == -1) {
-    //     perror("munmap");
-    // } else {
-    //     TRACE("Unmapped block -- [%p]: %zu bytes", block, block_size);
-    // }
