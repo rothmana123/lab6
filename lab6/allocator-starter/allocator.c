@@ -160,17 +160,19 @@ struct mem_block *find_suitable_block(size_t size)
     return NULL;
 }
 
-//unclear on what this method does - maybe delete
-// void *malloc_name(size_t size, const char *name) {
-//     void *ptr = malloc(size);
-//     if (ptr == NULL)
-//         return NULL;
+//unclear on what this method does - ah, its for debugging
+void *malloc_name(size_t size, const char *name) {
+    void *ptr = malloc(size);
+    if (ptr == NULL)
+        return NULL;
 
-//     struct mem_block *block = (struct mem_block *)ptr - 1;
-//     strncpy(block->name, name, BLOCK_NAME_LEN - 1);
-//     block->name[BLOCK_NAME_LEN - 1] = '\0';
-//     return ptr;
-// }
+    struct mem_block *block = (struct mem_block *)ptr - 1;
+     if (name) {
+        strncpy(block->name, name, BLOCK_NAME_LEN - 1);
+        block->name[BLOCK_NAME_LEN - 1] = '\0'; // Make sure it's null-terminated
+    }
+    return ptr;
+}
 
 /**
  * The malloc() function allocates size bytes and returns a pointer to the
@@ -327,10 +329,12 @@ void print_memory()
 {
     printf("=== Free List State ===\n");
     struct mem_block *cur = free_list_head;
+    int index = 0;
     while (cur != NULL)
     {
-        printf("Block at %p | size: %zu | name: %s\n",
-               (void *)cur, cur->size, cur->name[0] ? cur->name : "(unnamed)");
+        printf("Block %d at %p | size: %-6zu | name: %s\n",
+               index++, (void *)cur, cur->size,
+               cur->name[0] ? cur->name : "(unnamed)");
         cur = cur->next;
     }
     printf("=======================\n");
@@ -340,13 +344,18 @@ int main()
 {
     setenv("ALLOC_THRESH", "3", 1); // Keep the free list short for testing
 
-    
-    void *a = malloc(100);
-    strncpy(((struct mem_block *)a - 1)->name, "alpha", BLOCK_NAME_LEN);
-    void *b = malloc(200);
-    strncpy(((struct mem_block *)b - 1)->name, "beta", BLOCK_NAME_LEN);
-    void *c = malloc(300);
-    strncpy(((struct mem_block *)c - 1)->name, "gamma", BLOCK_NAME_LEN);
+    ///code before implementing malloc_name
+    // void *a = malloc(100);
+    // strncpy(((struct mem_block *)a - 1)->name, "alpha", BLOCK_NAME_LEN);
+    // void *b = malloc(200);
+    // strncpy(((struct mem_block *)b - 1)->name, "beta", BLOCK_NAME_LEN);
+    // void *c = malloc(300);
+    // strncpy(((struct mem_block *)c - 1)->name, "gamma", BLOCK_NAME_LEN);
+
+    //implementation with malloc_name:
+    void *a = malloc_name(100, "alpha");
+    void *b = malloc_name(200, "beta");
+    void *c = malloc_name(300, "gamma");
 
     // Free the blocks in the order they were allocated
     free(a);
@@ -357,8 +366,9 @@ int main()
     print_memory();
 
     // Allocate another block to reuse from the list
-    void *d = malloc(150);
-    strncpy(((struct mem_block *)d - 1)->name, "gamma", BLOCK_NAME_LEN);
+    // void *d = malloc(150);
+    // strncpy(((struct mem_block *)d - 1)->name, "gamma", BLOCK_NAME_LEN);
+    void *d = malloc_name(150, "delta");
     printf("Reused or new block: %p (delta)\n", d);
 
     print_memory(); // Updated free list
