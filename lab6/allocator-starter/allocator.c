@@ -167,6 +167,8 @@ struct mem_block *find_suitable_block(size_t size)
 
             // TRACE("Reusing block from free list [%p], usable: %zu, requested: %zu",
             //       current, usable_size, size);
+            TRACE("malloc(): Reused block -- [%p]: %zu bytes", current, current->size);
+
             return current;
         }
 
